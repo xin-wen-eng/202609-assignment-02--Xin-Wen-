@@ -1,0 +1,56 @@
+# CSYE 6225 - Assignment 2
+#
+# This is a REFERENCE COPY of the workflow described in the assignment
+# instructions. To activate it:
+#
+#   1. Rename this file to deploy.yml (remove the .example extension)
+#      or copy its contents into a new file at:
+#        .github/workflows/deploy.yml
+#   2. Make sure you've added the EC2_HOST, EC2_USERNAME, and EC2_SSH_KEY
+#      secrets in your repo (Settings > Secrets and variables > Actions)
+#      before pushing, or the workflow will fail.
+#
+# See the Assignment 2 instructions (Part 4) for a full walkthrough of
+# what each step below does.
+
+name: Deploy to EC2
+on: [push]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy Files to EC2
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "."
+          target: "/home/ubuntu/api-assignment"
+
+      - name: Start Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/ubuntu/api-assignment
+            # Install Dependencies
+            sudo apt-get update
+            sudo apt-get install -y python3-pip
+            sudo pip3 install --break-system-packages -r api_server/requirements.txt
+            # Stop old service
+            sudo systemctl stop api-server.service || true
+            sudo systemctl reset-failed api-server.service || true
+            # Start Server
+            sudo systemd-run --unit=api-server --no-block \
+              --working-directory=/home/ubuntu/api-assignment \
+              python3 api_server/server.py
+            # Verify startup
+            sleep 5
+            sudo systemctl is-active api-server.service
